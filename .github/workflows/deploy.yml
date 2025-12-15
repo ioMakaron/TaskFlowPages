@@ -10,7 +10,7 @@ on:
   pull_request:
     branches: ["FrontBranch"]
   
-  # РУЧНОЙ ЗАПУСК - ВАЖНО!
+  # РУЧНОЙ ЗАПУСК
   workflow_dispatch:
     inputs:
       deploy_message:
@@ -61,8 +61,6 @@ jobs:
         run: |
           echo "📁 Project structure verification:"
           echo "Current directory: $(pwd)"
-          ls -la
-          echo ""
           
           if [ ! -d "jiroapp" ]; then
             echo "❌ Directory 'jiroapp' not found!"
@@ -156,10 +154,6 @@ jobs:
           echo "🏗️ Building Next.js TypeScript application..."
           export NEXT_TELEMETRY_DISABLED=1
           
-          echo "📜 Available scripts:"
-          pnpm run || echo "Could not list scripts"
-          echo ""
-          
           echo "🚀 Starting build..."
           pnpm run build
           
@@ -186,103 +180,19 @@ jobs:
             echo "ℹ️ Found '.next' directory (SSG/SSR)"
             mkdir -p out
             
-            # Создаем информационный index.html
-            cat > out/index.html << EOF
+            # Простой HTML для GitHub Pages
+            cat > out/index.html << 'EOF'
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Next.js TypeScript App - Deployed via GitHub Actions</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-        h1 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 2.5em;
-        }
-        .badge {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #10b981;
-            color: white;
-            border-radius: 50px;
-            margin: 10px;
-            font-weight: bold;
-        }
-        .info {
-            background: #3b82f6;
-        }
-        .manual {
-            background: #f59e0b;
-        }
-        .details {
-            text-align: left;
-            background: #f8fafc;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
-        }
-        .url {
-            display: inline-block;
-            padding: 15px 30px;
-            background: #6366f1;
-            color: white;
-            text-decoration: none;
-            border-radius: 10px;
-            font-weight: bold;
-            margin-top: 20px;
-            transition: transform 0.3s;
-        }
-        .url:hover {
-            transform: translateY(-2px);
-        }
-    </style>
+    <title>Next.js TypeScript App</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
-    <div class="card">
-        <h1>🚀 Next.js TypeScript App</h1>
-        
-        <div>
-            <span class="badge">✅ Build Successful</span>
-            <span class="badge info">Node.js 22</span>
-            ${{ github.event_name == 'workflow_dispatch' && '<span class="badge manual">Manual Deployment</span>' || '' }}
-        </div>
-        
-        <div class="details">
-            <p><strong>📅 Build Date:</strong> $(date)</p>
-            <p><strong>🔧 Branch:</strong> FrontBranch</p>
-            <p><strong>🔄 Trigger:</strong> ${{ github.event_name }}</p>
-            ${{ inputs.deploy_message && '<p><strong>💬 Message:</strong> ' + inputs.deploy_message + '</p>' || '' }}
-            <p><strong>📦 Package Manager:</strong> pnpm 9</p>
-            <p><strong>⚡ Build Tool:</strong> Next.js with Turbopack</p>
-        </div>
-        
-        <p>This application was successfully built and deployed using GitHub Actions.</p>
-        
-        <a href="https://github.com/${{ github.repository }}" class="url" target="_blank">
-            📁 View Source Code
-        </a>
-    </div>
+    <h1>Next.js TypeScript Application</h1>
+    <p>Build successful on Node.js 22</p>
+    <p>Deployed via GitHub Actions</p>
 </body>
 </html>
 EOF
@@ -290,15 +200,15 @@ EOF
           else
             echo "⚠️ No build output found, creating output directory"
             mkdir -p out
-            cat > out/index.html << EOF
+            cat > out/index.html << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
     <title>Build Output</title>
 </head>
 <body>
-    <h1>Build Output Directory Created</h1>
-    <p>The build process completed and created this output directory.</p>
+    <h1>Build Output Directory</h1>
+    <p>Build process completed.</p>
 </body>
 </html>
 EOF
@@ -309,9 +219,6 @@ EOF
           touch $ARTIFACT_PATH/.nojekyll
           
           echo "📁 Artifact path: $ARTIFACT_PATH"
-          echo "📄 Files in artifact:"
-          ls -la $ARTIFACT_PATH/
-          
           echo "artifact_path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
         id: configure_output
 
@@ -329,9 +236,6 @@ EOF
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
-    
-    # ВСЕГДА запускаем deploy
-    # Никаких условий if - деплой доступен всегда
 
     steps:
       - name: Deploy to GitHub Pages
@@ -340,18 +244,6 @@ EOF
 
       - name: Display deployment URL
         run: |
-          echo ""
-          echo "🎉🎉🎉 DEPLOYMENT SUCCESSFUL! 🎉🎉🎉"
-          echo ""
-          echo "🌐 Your site is now live at:"
-          echo "   ${{ steps.deployment.outputs.page_url }}"
-          echo ""
-          echo "📊 GitHub Pages URL:"
-          echo "   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-          echo ""
-          echo "🕒 Deployment time: $(date)"
+          echo "🎉 DEPLOYMENT SUCCESSFUL!"
+          echo "🌐 Your site is live at: ${{ steps.deployment.outputs.page_url }}"
           echo "🔧 Triggered by: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "💬 Message: ${{ inputs.deploy_message || 'No message provided' }}"
-          fi
-          echo ""

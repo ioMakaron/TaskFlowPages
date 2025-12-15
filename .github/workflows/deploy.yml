@@ -1,11 +1,8 @@
-name: Deploy Next.js
+name: Deploy Next.js with pnpm
 
 on:
   push:
     branches: ["FrontBranch"]
-    paths:
-      - 'jiroapp/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -28,120 +25,105 @@ jobs:
           ref: FrontBranch
           fetch-depth: 0
 
-      - name: Verify jiroapp exists
+      - name: Verify project structure
         run: |
           echo "Current directory: $(pwd)"
           ls -la
           echo ""
           echo "Checking jiroapp..."
           if [ -d "jiroapp" ] && [ -f "jiroapp/package.json" ]; then
-            echo "✅ jiroapp found with package.json"
-            echo "Node version in package.json:"
-            cat jiroapp/package.json | grep -i "node\|engines" || echo "No node version specified"
+            echo "✅ jiroapp found"
+            cd jiroapp
+            echo "Package manager files:"
+            ls -la | grep -E "(pnpm|yarn|npm|package)" || true
+            echo ""
+            echo "Node version requirement:"
+            cat package.json | grep -i "node\|engines" || echo "Not specified"
           else
             echo "❌ jiroapp or package.json not found"
             exit 1
           fi
 
-      - name: Setup Node.js
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "22" 
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'  # Ищем любой package-lock.json
+          node-version: "22"
+          cache: 'pnpm'
+          cache-dependency-path: 'jiroapp/pnpm-lock.yaml'  # Указываем явно lock файл
 
-      - name: Detect package manager
-        id: detect-package-manager
+      - name: Install dependencies with pnpm
         run: |
           cd jiroapp
-          echo "Current dir: $(pwd)"
-          if [ -f "yarn.lock" ]; then
-            echo "manager=yarn" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-            echo "runner=yarn" >> $GITHUB_OUTPUT
-            echo "Using Yarn"
-          elif [ -f "package-lock.json" ]; then
-            echo "manager=npm" >> $GITHUB_OUTPUT
-            echo "command=ci" >> $GITHUB_OUTPUT
-            echo "runner=npx --no-install" >> $GITHUB_OUTPUT
-            echo "Using npm (package-lock.json found)"
-          elif [ -f "package.json" ]; then
-            echo "manager=npm" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-            echo "runner=npx --no-install" >> $GITHUB_OUTPUT
-            echo "Using npm (no lock file)"
-          else
-            echo "❌ No package.json found"
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: |
-          cd jiroapp
-          echo "Installing dependencies..."
-          if [ -f "yarn.lock" ]; then
-            yarn install --frozen-lockfile
-          elif [ -f "package-lock.json" ]; then
-            npm ci
-          else
-            npm install
-          fi
+          echo "Installing with pnpm..."
+          pnpm install --frozen-lockfile
           echo "✅ Dependencies installed"
 
-      - name: Build Next.js
+      - name: Build Next.js with pnpm
         run: |
           cd jiroapp
-          echo "Building Next.js app..."
-          # Проверяем доступные скрипты
-          echo "Available scripts:"
-          cat package.json | grep '"scripts"' -A 20 || true
+          echo "Building with pnpm..."
           
-          # Пробуем разные команды сборки
-          if npm run | grep -q "build"; then
-            npm run build
-          else
-            npx next build
-          fi
+          # Проверяем скрипты
+          echo "Available scripts:"
+          pnpm run || echo "No scripts or error"
+          
+          # Собираем
+          pnpm run build || pnpm exec next build
+          
           echo "✅ Build completed"
         env:
           NODE_ENV: production
-          # Для GitHub Pages в корне
+          # Для деплоя в корень GitHub Pages
           NEXT_PUBLIC_BASE_PATH: ""
 
-      - name: Verify build output
+      - name: Check build output
         run: |
           echo "Checking build output..."
-          if [ -d "jiroapp/.next" ]; then
-            echo "⚠️  .next directory found (SSG mode)"
-            # Для SSG без export
+          
+          # Проверяем разные возможные выходные директории
+          if [ -d "jiroapp/out" ]; then
+            echo "✅ Found 'out' directory"
+            ARTIFACT_PATH="jiroapp/out"
+          elif [ -d "jiroapp/dist" ]; then
+            echo "✅ Found 'dist' directory"
+            ARTIFACT_PATH="jiroapp/dist"
+          elif [ -d "jiroapp/build" ]; then
+            echo "✅ Found 'build' directory"
+            ARTIFACT_PATH="jiroapp/build"
+          elif [ -d "jiroapp/.next" ]; then
+            echo "⚠️  Found '.next' directory (SSG mode)"
+            # Создаем out из .next если нужно
             mkdir -p jiroapp/out
+            # Копируем статику если есть
             cp -r jiroapp/.next/static jiroapp/out/ 2>/dev/null || true
-            # Проверяем есть ли standalone
-            if [ -d "jiroapp/.next/standalone" ]; then
-              echo "✅ Next.js standalone output"
-            fi
+            ARTIFACT_PATH="jiroapp/out"
+          else
+            echo "❌ No build output found"
+            echo "Creating minimal output..."
+            mkdir -p jiroapp/out
+            echo "<html><body><h1>Next.js App</h1><p>Build output not found</p></body></html>" > jiroapp/out/index.html
+            ARTIFACT_PATH="jiroapp/out"
           fi
           
-          if [ -d "jiroapp/out" ]; then
-            echo "✅ out directory found"
-            echo "Files:"
-            ls -la jiroapp/out/
-            if [ -f "jiroapp/out/index.html" ]; then
-              echo "✅ index.html found"
-            else
-              echo "⚠️  index.html not found, checking for other HTML files..."
-              find jiroapp/out -name "*.html" -type f
-            fi
-          else
-            echo "❌ No out directory. Creating minimal static site..."
-            mkdir -p jiroapp/out
-            echo "<html><body><h1>Coming Soon</h1></body></html>" > jiroapp/out/index.html
-          fi
+          echo "Artifact path: $ARTIFACT_PATH"
+          ls -la $ARTIFACT_PATH/
+          echo "::set-output name=artifact_path::$ARTIFACT_PATH"
+        id: check_output
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        with:
+          static_site_generator: next
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: jiroapp/out/
+          path: ${{ steps.check_output.outputs.artifact_path }}
 
   deploy:
     environment:

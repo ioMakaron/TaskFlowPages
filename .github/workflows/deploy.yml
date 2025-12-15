@@ -4,7 +4,7 @@ name: Deploy Next.js
 on:
   # Runs on pushes targeting the default branch
   push:
-    branches: ["main"]
+    branches: ["FrontBranch"]
     paths:
       - 'jiroapp/**'
       - '.github/workflows/deploy.yml'

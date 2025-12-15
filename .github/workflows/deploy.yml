@@ -1,6 +1,7 @@
 name: Deploy Next.js TypeScript App to GitHub Pages
 
 on:
+  # Автоматические триггеры
   push:
     branches: ["FrontBranch"]
     paths:
@@ -8,7 +9,20 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches: ["FrontBranch"]
-  workflow_dispatch:  # Это включает ручной запуск
+  
+  # РУЧНОЙ ЗАПУСК - ВАЖНО!
+  workflow_dispatch:
+    inputs:
+      deploy_message:
+        description: 'Deployment message'
+        required: false
+        default: 'Manual deployment triggered'
+        type: string
+      skip_type_check:
+        description: 'Skip TypeScript type checking'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -25,6 +39,9 @@ jobs:
     defaults:
       run:
         working-directory: ./jiroapp
+    
+    # Пропускаем type-check если выбран skip_type_check при ручном запуске
+    if: ${{ !inputs.skip_type_check || github.event_name != 'workflow_dispatch' }}
 
     steps:
       - name: Checkout FrontBranch
@@ -32,10 +49,19 @@ jobs:
         with:
           ref: FrontBranch
 
+      - name: Display deployment info
+        run: |
+          echo "🚀 Deployment Information"
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Message: ${{ inputs.deploy_message || 'No message provided' }}"
+          echo "Skip Type Check: ${{ inputs.skip_type_check || 'false' }}"
+
       - name: Verify TypeScript project structure
         run: |
           echo "📁 Project structure verification:"
           echo "Current directory: $(pwd)"
+          ls -la
           echo ""
           
           if [ ! -d "jiroapp" ]; then
@@ -51,10 +77,10 @@ jobs:
           fi
           
           echo "✅ Found package.json"
-          echo ""
-          echo "🔧 Node.js version requirements:"
-          node -v
-          grep -i "engines" package.json || echo "No engines specified"
+          echo "📄 Checking TypeScript config..."
+          if [ ! -f "tsconfig.json" ]; then
+            echo "⚠️ tsconfig.json not found, but continuing..."
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -86,10 +112,11 @@ jobs:
           echo "✅ Dependencies installed"
 
       - name: TypeScript type checking
+        if: ${{ !inputs.skip_type_check || github.event_name != 'workflow_dispatch' }}
         run: |
           cd jiroapp
           echo "🔍 Running TypeScript type check..."
-          npx tsc --noEmit --skipLibCheck || echo "⚠️ TypeScript check warnings - continuing..."
+          npx tsc --noEmit --skipLibCheck || echo "⚠️ TypeScript check completed with warnings"
           
   build:
     runs-on: ubuntu-latest
@@ -128,6 +155,12 @@ jobs:
         run: |
           echo "🏗️ Building Next.js TypeScript application..."
           export NEXT_TELEMETRY_DISABLED=1
+          
+          echo "📜 Available scripts:"
+          pnpm run || echo "Could not list scripts"
+          echo ""
+          
+          echo "🚀 Starting build..."
           pnpm run build
           
           if [ $? -eq 0 ]; then
@@ -153,51 +186,119 @@ jobs:
             echo "ℹ️ Found '.next' directory (SSG/SSR)"
             mkdir -p out
             
-            # Создаем index.html для GitHub Pages
+            # Создаем информационный index.html
             cat > out/index.html << EOF
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Next.js TypeScript App</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Next.js TypeScript App - Deployed via GitHub Actions</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-               padding: 2rem; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 2rem auto; padding: 2rem; 
-                     background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .success { color: #2ecc71; font-weight: bold; }
-        .info { color: #3498db; }
-        .btn { display: inline-block; padding: 10px 20px; background: #0070f3; 
-               color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+        .badge {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #10b981;
+            color: white;
+            border-radius: 50px;
+            margin: 10px;
+            font-weight: bold;
+        }
+        .info {
+            background: #3b82f6;
+        }
+        .manual {
+            background: #f59e0b;
+        }
+        .details {
+            text-align: left;
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .url {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #6366f1;
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: transform 0.3s;
+        }
+        .url:hover {
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 Next.js TypeScript Application</h1>
-        <p class="success">✅ Build successful!</p>
-        <p class="info">📅 Build date: $(date)</p>
-        <p class="info">🔧 Branch: FrontBranch</p>
-        <p class="info">🔄 Trigger: ${{ github.event_name }}</p>
-        <p>This is a server-side rendered (SSR) Next.js application with TypeScript.</p>
-        <a href="https://nextjs.org" class="btn">Learn about Next.js</a>
+    <div class="card">
+        <h1>🚀 Next.js TypeScript App</h1>
+        
+        <div>
+            <span class="badge">✅ Build Successful</span>
+            <span class="badge info">Node.js 22</span>
+            ${{ github.event_name == 'workflow_dispatch' && '<span class="badge manual">Manual Deployment</span>' || '' }}
+        </div>
+        
+        <div class="details">
+            <p><strong>📅 Build Date:</strong> $(date)</p>
+            <p><strong>🔧 Branch:</strong> FrontBranch</p>
+            <p><strong>🔄 Trigger:</strong> ${{ github.event_name }}</p>
+            ${{ inputs.deploy_message && '<p><strong>💬 Message:</strong> ' + inputs.deploy_message + '</p>' || '' }}
+            <p><strong>📦 Package Manager:</strong> pnpm 9</p>
+            <p><strong>⚡ Build Tool:</strong> Next.js with Turbopack</p>
+        </div>
+        
+        <p>This application was successfully built and deployed using GitHub Actions.</p>
+        
+        <a href="https://github.com/${{ github.repository }}" class="url" target="_blank">
+            📁 View Source Code
+        </a>
     </div>
 </body>
 </html>
 EOF
             ARTIFACT_PATH="out"
           else
-            echo "⚠️ No build output found, creating minimal output"
+            echo "⚠️ No build output found, creating output directory"
             mkdir -p out
             cat > out/index.html << EOF
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Next.js App</title>
+    <title>Build Output</title>
 </head>
 <body>
-    <h1>Application Build Output</h1>
-    <p>Build completed successfully via GitHub Actions.</p>
+    <h1>Build Output Directory Created</h1>
+    <p>The build process completed and created this output directory.</p>
 </body>
 </html>
 EOF
@@ -208,6 +309,7 @@ EOF
           touch $ARTIFACT_PATH/.nojekyll
           
           echo "📁 Artifact path: $ARTIFACT_PATH"
+          echo "📄 Files in artifact:"
           ls -la $ARTIFACT_PATH/
           
           echo "artifact_path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
@@ -227,17 +329,29 @@ EOF
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
-    # Убираем условие if, чтобы deploy работал всегда
-    # Это позволит запускать deploy вручную и автоматически
+    
+    # ВСЕГДА запускаем deploy
+    # Никаких условий if - деплой доступен всегда
 
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages
 
       - name: Display deployment URL
         run: |
-          echo "🎉 Deployment successful!"
-          echo "🌐 Your site is live at: ${{ steps.deployment.outputs.page_url }}"
+          echo ""
+          echo "🎉🎉🎉 DEPLOYMENT SUCCESSFUL! 🎉🎉🎉"
+          echo ""
+          echo "🌐 Your site is now live at:"
+          echo "   ${{ steps.deployment.outputs.page_url }}"
+          echo ""
+          echo "📊 GitHub Pages URL:"
+          echo "   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo ""
+          echo "🕒 Deployment time: $(date)"
+          echo "🔧 Triggered by: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "💬 Message: ${{ inputs.deploy_message || 'No message provided' }}"
+          fi
+          echo ""

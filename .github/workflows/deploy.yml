@@ -1,7 +1,6 @@
 name: Deploy Next.js TypeScript App to GitHub Pages
 
 on:
-  # Автоматические триггеры
   push:
     branches: ["FrontBranch"]
     paths:
@@ -10,7 +9,6 @@ on:
   pull_request:
     branches: ["FrontBranch"]
   
-  # РУЧНОЙ ЗАПУСК
   workflow_dispatch:
     inputs:
       deploy_message:
@@ -40,7 +38,6 @@ jobs:
       run:
         working-directory: ./jiroapp
     
-    # Пропускаем type-check если выбран skip_type_check при ручном запуске
     if: ${{ !inputs.skip_type_check || github.event_name != 'workflow_dispatch' }}
 
     steps:
@@ -49,35 +46,17 @@ jobs:
         with:
           ref: FrontBranch
 
-      - name: Display deployment info
+      - name: Verify project structure
         run: |
-          echo "🚀 Deployment Information"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Message: ${{ inputs.deploy_message || 'No message provided' }}"
-          echo "Skip Type Check: ${{ inputs.skip_type_check || 'false' }}"
-
-      - name: Verify TypeScript project structure
-        run: |
-          echo "📁 Project structure verification:"
-          echo "Current directory: $(pwd)"
-          
           if [ ! -d "jiroapp" ]; then
-            echo "❌ Directory 'jiroapp' not found!"
+            echo "Directory 'jiroapp' not found!"
             exit 1
           fi
           
           cd jiroapp
-          echo "📦 Checking package.json..."
           if [ ! -f "package.json" ]; then
-            echo "❌ package.json not found in jiroapp/"
+            echo "package.json not found in jiroapp/"
             exit 1
-          fi
-          
-          echo "✅ Found package.json"
-          echo "📄 Checking TypeScript config..."
-          if [ ! -f "tsconfig.json" ]; then
-            echo "⚠️ tsconfig.json not found, but continuing..."
           fi
 
       - name: Setup pnpm
@@ -105,16 +84,13 @@ jobs:
       - name: Install dependencies
         run: |
           cd jiroapp
-          echo "📥 Installing dependencies..."
           pnpm install --frozen-lockfile
-          echo "✅ Dependencies installed"
 
       - name: TypeScript type checking
         if: ${{ !inputs.skip_type_check || github.event_name != 'workflow_dispatch' }}
         run: |
           cd jiroapp
-          echo "🔍 Running TypeScript type check..."
-          npx tsc --noEmit --skipLibCheck || echo "⚠️ TypeScript check completed with warnings"
+          npx tsc --noEmit --skipLibCheck || echo "TypeScript check completed"
           
   build:
     runs-on: ubuntu-latest
@@ -151,75 +127,35 @@ jobs:
 
       - name: Build Next.js TypeScript application
         run: |
-          echo "🏗️ Building Next.js TypeScript application..."
-          export NEXT_TELEMETRY_DISABLED=1
-          
-          echo "🚀 Starting build..."
-          pnpm run build
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ Build completed successfully"
-          else
-            echo "❌ Build failed"
-            exit 1
-          fi
+          cd jiroapp
+          NEXT_TELEMETRY_DISABLED=1 pnpm run build
         env:
           NODE_ENV: production
           NEXT_TELEMETRY_DISABLED: 1
           NEXT_PUBLIC_BASE_PATH: ""
 
-      - name: Configure Next.js output for GitHub Pages
+      - name: Configure output for GitHub Pages
         run: |
-          echo "⚙️ Configuring output for GitHub Pages..."
+          cd jiroapp
           
-          # Определяем выходную директорию
           if [ -d "out" ]; then
-            echo "✅ Found 'out' directory (static export)"
-            ARTIFACT_PATH="out"
+            echo "Using existing 'out' directory"
           elif [ -d ".next" ]; then
-            echo "ℹ️ Found '.next' directory (SSG/SSR)"
+            echo "Creating 'out' directory from .next"
             mkdir -p out
-            
-            # Простой HTML для GitHub Pages
-            cat > out/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Next.js TypeScript App</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body>
-    <h1>Next.js TypeScript Application</h1>
-    <p>Build successful on Node.js 22</p>
-    <p>Deployed via GitHub Actions</p>
-</body>
-</html>
-EOF
-            ARTIFACT_PATH="out"
+            # Копируем статику если есть
+            if [ -d ".next/static" ]; then
+              cp -r .next/static out/ 2>/dev/null || true
+            fi
           else
-            echo "⚠️ No build output found, creating output directory"
+            echo "Creating minimal 'out' directory"
             mkdir -p out
-            cat > out/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Build Output</title>
-</head>
-<body>
-    <h1>Build Output Directory</h1>
-    <p>Build process completed.</p>
-</body>
-</html>
-EOF
-            ARTIFACT_PATH="out"
           fi
           
-          # Создаем .nojekyll файл для GitHub Pages
-          touch $ARTIFACT_PATH/.nojekyll
+          # Создаем .nojekyll файл
+          touch out/.nojekyll
           
-          echo "📁 Artifact path: $ARTIFACT_PATH"
-          echo "artifact_path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
+          echo "artifact_path=jiroapp/out" >> $GITHUB_OUTPUT
         id: configure_output
 
       - name: Setup GitHub Pages
@@ -244,6 +180,5 @@ EOF
 
       - name: Display deployment URL
         run: |
-          echo "🎉 DEPLOYMENT SUCCESSFUL!"
-          echo "🌐 Your site is live at: ${{ steps.deployment.outputs.page_url }}"
-          echo "🔧 Triggered by: ${{ github.event_name }}"
+          echo "Deployment successful!"
+          echo "URL: ${{ steps.deployment.outputs.page_url }}"

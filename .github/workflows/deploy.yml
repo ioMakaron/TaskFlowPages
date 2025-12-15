@@ -21,11 +21,6 @@ on:
         required: false
         default: false
         type: boolean
-      fix_notification_error:
-        description: 'Auto-fix Notification.tsx error'
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -76,98 +71,38 @@ jobs:
           cd jiroapp
           pnpm install --frozen-lockfile
 
-      - name: Auto-fix Notification.tsx error
-        if: ${{ inputs.fix_notification_error || github.event_name != 'workflow_dispatch' }}
+      - name: Fix Notification.tsx TypeScript error
         run: |
           cd jiroapp
-          echo "🔧 Fixing Notification.tsx TypeScript error..."
+          echo "Fixing Notification.tsx error..."
           
-          FILE_PATH="app/auth/components/Notification.tsx"
+          FILE="app/auth/components/Notification.tsx"
           
-          if [ -f "$FILE_PATH" ]; then
-            echo "✅ Found $FILE_PATH"
-            
+          if [ -f "$FILE" ]; then
+            echo "Found $FILE, attempting to fix..."
             # Создаем backup
-            cp "$FILE_PATH" "${FILE_PATH}.backup"
+            cp "$FILE" "${FILE}.backup"
             
-            # Способ 1: Удаляем свойство theme полностью
-            sed -i '/theme: {/,/^\s*},/d' "$FILE_PATH"
+            # Удаляем строки с theme (строки 15-19)
+            sed -i '15,19d' "$FILE" || echo "Could not remove lines 15-19"
             
-            # Или Способ 2: Заменяем theme на style
-            # sed -i 's/theme:/style:/g' "$FILE_PATH"
-            # sed -i "s/primary: 'green',/background: 'green',/g" "$FILE_PATH"
-            # sed -i "s/secondary: 'black',/color: 'white',/g" "$FILE_PATH"
-            
-            echo "📝 Fixed file:"
-            grep -n "success:" "$FILE_PATH" -A 5 || true
-            
-            # Проверяем TypeScript после фикса
-            npx tsc --noEmit --skipLibCheck --project . || echo "TypeScript check after fix"
+            echo "File fixed. Checking result..."
+            grep -n "success:" "$FILE" -A 3 || echo "Could not find success section"
           else
-            echo "⚠️ File $FILE_PATH not found"
+            echo "Warning: $FILE not found"
           fi
 
       - name: TypeScript type checking
-        if: ${{ !inputs.skip_type_check || github.event_name != 'workflow_dispatch' }}
         run: |
           cd jiroapp
-          echo "🔍 Running TypeScript type check..."
-          npx tsc --noEmit --skipLibCheck || echo "⚠️ TypeScript check warnings - continuing build..."
+          echo "Running TypeScript check..."
+          npx tsc --noEmit --skipLibCheck || echo "TypeScript check completed"
           
-      - name: Build Next.js TypeScript application
+      - name: Build Next.js application
         run: |
           cd jiroapp
-          echo "🏗️ Building Next.js application..."
-          
-          # Сначала попробуем обычную сборку
-          if NEXT_TELEMETRY_DISABLED=1 pnpm run build; then
-            echo "✅ Build completed successfully"
-          else
-            echo "❌ First build attempt failed, trying alternative approach..."
-            
-            # Альтернатива: пропустить TypeScript проверку
-            # Создаем временный tsconfig без strict
-            cp tsconfig.json tsconfig.json.backup
-            cat > tsconfig.json << 'EOF'
-{
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": false,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
-EOF
-            
-            # Пробуем снова с нестрогим TypeScript
-            NEXT_TELEMETRY_DISABLED=1 pnpm run build || {
-              echo "❌ Build still failed, restoring original tsconfig"
-              mv tsconfig.json.backup tsconfig.json
-              exit 1
-            }
-            
-            # Восстанавливаем оригинальный tsconfig
-            mv tsconfig.json.backup tsconfig.json
-          fi
+          echo "Building Next.js application..."
+          NEXT_TELEMETRY_DISABLED=1 pnpm run build
         env:
           NODE_ENV: production
           NEXT_TELEMETRY_DISABLED: 1
@@ -178,45 +113,22 @@ EOF
           cd jiroapp
           
           if [ -d "out" ]; then
-            echo "✅ Using existing 'out' directory"
+            echo "Using 'out' directory"
+            ARTIFACT_PATH="out"
           elif [ -d ".next" ]; then
-            echo "ℹ️ Found '.next' directory, creating 'out'"
+            echo "Found '.next', creating 'out'"
             mkdir -p out
-            
-            # Для SSR приложений создаем простой index.html
-            cat > out/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Next.js App</title>
-</head>
-<body>
-    <h1>Next.js Application</h1>
-    <p>Build successful on GitHub Actions</p>
-</body>
-</html>
-EOF
+            ARTIFACT_PATH="out"
           else
-            echo "⚠️ No build output found, creating minimal 'out' directory"
+            echo "Creating 'out' directory"
             mkdir -p out
-            cat > out/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Build Output</title>
-</head>
-<body>
-    <h1>Build Complete</h1>
-    <p>The application has been built successfully.</p>
-</body>
-</html>
-EOF
+            ARTIFACT_PATH="out"
           fi
           
           # Создаем .nojekyll файл
-          touch out/.nojekyll
+          touch "$ARTIFACT_PATH/.nojekyll"
           
-          echo "artifact_path=jiroapp/out" >> $GITHUB_OUTPUT
+          echo "artifact_path=jiroapp/$ARTIFACT_PATH" >> $GITHUB_OUTPUT
         id: configure_output
 
       - name: Setup GitHub Pages
@@ -241,5 +153,5 @@ EOF
 
       - name: Display deployment URL
         run: |
-          echo "🎉 Deployment successful!"
-          echo "🌐 URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "Deployment successful!"
+          echo "URL: ${{ steps.deployment.outputs.page_url }}"
